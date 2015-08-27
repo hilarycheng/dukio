@@ -1,0 +1,17 @@
+CC = gcc
+CFLAGS = -Os -Iduktape -Ilibuv/include
+LDFLAGS = -lm -lpthread ./libuv.a
+OBJS = duktape/duktape.o
+EXEC = tests/test-obj.e
+
+all: $(EXEC)
+
+%.e: %.o
+	$(CC) -o $(basename $@) $^ $(OBJS) $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $^
+
+clean:
+	-rm $(OBJS)
+	-rm $(EXEC)

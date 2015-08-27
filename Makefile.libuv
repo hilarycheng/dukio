@@ -1,0 +1,35 @@
+ROOT = libuv
+SRC_DIR = $(ROOT)/src
+INC_DIR = $(ROOT)/include
+UNIX_DIR = $(ROOT)/src/unix
+CC = gcc
+AR = ar
+CFLAGS = -fPIC --std=c89 -pedantic -Wall -Wextra -Wno-unused-parameter -I$(INC_DIR) -I$(INC_DIR)/uv-private -I$(SRC_DIR) -D_GNU_SOURCE
+
+UNIX_OBJ = $(UNIX_DIR)/async.o $(UNIX_DIR)/core.o $(UNIX_DIR)/dl.o \
+	$(UNIX_DIR)/error.o $(UNIX_DIR)/fs.o $(UNIX_DIR)/getaddrinfo.o \
+	$(UNIX_DIR)/loop.o $(UNIX_DIR)/loop-watcher.o $(UNIX_DIR)/pipe.o \
+	$(UNIX_DIR)/poll.o $(UNIX_DIR)/process.o $(UNIX_DIR)/signal.o \
+	$(UNIX_DIR)/stream.o $(UNIX_DIR)/tcp.o $(UNIX_DIR)/thread.o \
+	$(UNIX_DIR)/threadpool.o $(UNIX_DIR)/timer.o $(UNIX_DIR)/tty.o \
+	$(UNIX_DIR)/udp.o
+
+LINUX_OBJ = $(UNIX_DIR)/linux-core.o $(UNIX_DIR)/linux-inotify.o $(UNIX_DIR)/linux-syscalls.o $(UNIX_DIR)/proctitle.o
+
+MAIN_OBJ = $(SRC_DIR)/fs-poll.o $(SRC_DIR)/uv-common.o $(SRC_DIR)/inet.o $(SRC_DIR)/version.o
+
+OBJS = $(MAIN_OBJ) $(UNIX_OBJ) $(LINUX_OBJ)
+
+STATIC = libuv.a
+
+all: $(STATIC)
+
+$(STATIC): $(OBJS)
+	$(AR) -cvq $(STATIC) $(OBJS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $^
+
+clean:
+	-rm $(OBJS)
+	-rm $(STATIC)

@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Os -Iduktape -Ilibuv/include
 LDFLAGS = -lm -lpthread ./libuv.a
 OBJS = duktape/duktape.o
-EXEC = tests/test-obj.e
+EXEC = tests/test-obj.e tests/net.e
 
 all: $(EXEC)
 

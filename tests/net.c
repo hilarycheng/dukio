@@ -10,17 +10,27 @@ static duk_ret_t net_createConnection(duk_context *ctx) {
 static duk_ret_t net_serverListen(duk_context *ctx) {
   uv_tcp_t *tcp;
   duk_size_t size;
+  int32_t id;
   struct sockaddr_in bind_addr;
-  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
+//  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
 
   const char *address = duk_require_string(ctx, 0);
   duk_int_t port = duk_require_int(ctx, 1);
 
-  printf("Address : %s , Port : %d\n", address, port);
+//  printf("Address : %s , Port : %d\n", address, port);
 
   duk_push_this(ctx);
   duk_get_prop_string(ctx, -1, "\xff""\xff""uv_tcp");
+  id = (int32_t) duk_to_number(ctx, -1);
+  duk_pop(ctx);
+
+  duk_push_global_stash(ctx);
+  duk_get_prop_string(ctx, -1, "netHandler");
+  duk_push_number(ctx, id);
+  duk_get_prop(ctx, -2);
+
   tcp = (uv_tcp_t *) duk_to_fixed_buffer(ctx, -1, &size);
+//  printf("Listen TCP :%p\n", tcp);
   duk_pop(ctx);
 
   bind_addr = uv_ip4_addr(address, port);
@@ -31,17 +41,27 @@ static duk_ret_t net_serverListen(duk_context *ctx) {
 }
 
 static duk_ret_t net_serverClose(duk_context *ctx) {
-  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
+//  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
   return 0;
 }
 
 static duk_ret_t net_serverAddress(duk_context *ctx) {
-  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
+//  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
   return 0;
 }
 
 static duk_ret_t net_serverFinalizer(duk_context *ctx) {
-  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
+  int32_t id;
+
+  duk_get_prop_string(ctx, -1, "\xff""\xff""uv_tcp");
+  id = (int32_t) duk_to_number(ctx, -1);
+  duk_pop(ctx);
+
+  duk_push_global_stash(ctx);
+  duk_get_prop_string(ctx, -1, "netHandler");
+  duk_push_number(ctx, id);
+  duk_del_prop(ctx, -2);
+
   return 0;
 }
 
@@ -59,29 +79,49 @@ static duk_ret_t net_createServer(duk_context *ctx) {
   duk_int_t p1 = duk_get_type(ctx, 1);
 
   if (duk_is_object(ctx, 0) && duk_is_callable(ctx, 0)) { // Function
-    printf("Function\n");
+    int32_t id = net_next_id++;
+
+//    printf("Function\n");
+    duk_push_global_stash(ctx); // [ stash ]
+    duk_get_prop_string(ctx, -1, "netHandler"); // [ netHandler ]
+    duk_push_number(ctx, id); // [ netHandler id ]
+    uv_tcp_t *tcp = (uv_tcp_t *) duk_push_fixed_buffer(ctx, sizeof(uv_tcp_t)); // [ netHandler id tcp ]
+    uv_tcp_init(uv_default_loop(), tcp);
+    duk_put_prop(ctx, -3); // netHandler[id] = tcp
+    duk_pop(ctx);
+
+//    printf("Create TCP %p\n", tcp);
 
     duk_push_object(ctx); // [ this ]
     duk_push_object(ctx); // [ object object ]
     rc = duk_put_prop_string(ctx, -2, "\xff""\xff""options"); // [ object.options ]
-    printf("Options : %d\n", rc);
+//    printf("Options : %d\n", rc);
     duk_dup(ctx, 0); // [ object.options function ]
     rc = duk_put_prop_string(ctx, -2, "\xff""\xff""callback"); // [ netobject ]
-    printf("Callback : %d\n", rc);
+//    printf("Callback : %d\n", rc);
     duk_put_function_list(ctx, -1, net_server_functions_list);
     duk_push_c_function(ctx, net_serverFinalizer, 1);
     duk_set_finalizer(ctx, -2);
 
-    uv_tcp_t *tcp = (uv_tcp_t *) duk_push_fixed_buffer(ctx, sizeof(uv_tcp_t));
-    uv_tcp_init(uv_default_loop(), tcp);
-    rc = duk_put_prop_string(ctx, -2, "\xff""\xff""uv_tcp");
-    printf("UVTCP: %d\n", rc);
+    duk_push_number(ctx, id);
+    duk_put_prop_string(ctx, -2, "\xff""\xff""uv_tcp");
 
-  printf("UV TCP Pointer %p\n", tcp);
     return 1;
   } else if (duk_is_object(ctx, 0) && !duk_is_callable(ctx, 0) &&
     duk_is_object(ctx, 1) && duk_is_callable(ctx, 1)) { // Object , Function
-    printf("Function & Obj\n");
+
+    int32_t id = net_next_id++;
+//    printf("Function & Obj\n");
+
+    duk_push_global_stash(ctx); // [ stash ]
+    duk_get_prop_string(ctx, -1, "netHandler"); // [ netHandler ]
+    duk_push_number(ctx, id); // [ netHandler id ]
+    uv_tcp_t *tcp = (uv_tcp_t *) duk_push_fixed_buffer(ctx, sizeof(uv_tcp_t)); // [ netHandler id tcp ]
+    uv_tcp_init(uv_default_loop(), tcp);
+    duk_put_prop(ctx, -3); // netHandler[id] = tcp
+    duk_pop(ctx);
+
+//    printf("Create TCP %p\n", tcp);
 
     duk_push_object(ctx); // [ object ]
     duk_dup(ctx, 0); // [ object object ]
@@ -92,10 +132,8 @@ static duk_ret_t net_createServer(duk_context *ctx) {
     duk_push_c_function(ctx, net_serverFinalizer, 1);
     duk_set_finalizer(ctx, -2);
 
-    uv_tcp_t *tcp = (uv_tcp_t *) duk_push_fixed_buffer(ctx, sizeof(uv_tcp_t));
-    uv_tcp_init(uv_default_loop(), tcp);
+    duk_push_number(ctx, id);
     duk_put_prop_string(ctx, -2, "\xff""\xff""uv_tcp");
-  printf("UV TCP Pointer %p\n", tcp);
 
     return 1;
   } else {
@@ -106,7 +144,7 @@ static duk_ret_t net_createServer(duk_context *ctx) {
 }
 
 static duk_ret_t net_connect(duk_context *ctx) {
-  printf("%s %d - Top : %d\n", __PRETTY_FUNCTION__, __LINE__, duk_get_top(ctx));
+//  printf("%s %d - Top : %d\n", __PRETTY_FUNCTION__, __LINE__, duk_get_top(ctx));
   return 0;
 }
 
@@ -122,6 +160,11 @@ void net_Init(duk_context *ctx) {
   duk_push_object(ctx);        // [ global obj ]
   duk_put_function_list(ctx, -1, net_functions_list); // [ global obj.functions ]
   duk_put_prop_string(ctx, -2, "net"); // [ global.net.functions ]
+  duk_pop(ctx);
+
+  duk_push_global_stash(ctx);
+  duk_push_object(ctx);
+  duk_put_prop_string(ctx, -2, "netHandler");
   duk_pop(ctx);
 }
 

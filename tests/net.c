@@ -4,18 +4,49 @@
 static duk_context *mainContext;
 static int32_t net_next_id = 1;
 
-static void net_on_new_connection(uv_stream_t *server, int status) {
-  duk_int_t result;
-  int32_t id = (int32_t) server->data;
+static void libuv_close(uv_handle_t *handle) {
+  printf("UV Close %p \n", handle);
+  free(handle);
+}
 
-  duk_push_global_stash(mainContext);
-  duk_get_prop_string(mainContext, -1, "netHandler");
-  duk_push_number(mainContext, id);
-  duk_get_prop(mainContext, -2);
-  result = duk_pcall(mainContext, 0);
-  duk_pop(mainContext); // Result
-  duk_pop(mainContext); // Net Handler
-  duk_pop(mainContext); // Stash
+static void libuv_read_cb(uv_stream_t * stream, ssize_t nread, uv_buf_t buf) {
+  printf("%s %d - %d\n", __PRETTY_FUNCTION__, __LINE__, nread);
+  if (nread == -1) {
+    uv_close((uv_handle_t *) stream, libuv_close);
+  }
+
+  free(buf.base);
+}
+
+static uv_buf_t libuv_alloc_buffer(uv_handle_t * handle, size_t size) {
+  return uv_buf_init((char *) malloc(size), size);
+}
+
+static void net_on_new_connection(uv_stream_t *server, int status) {
+  if (status == -1)
+    return;
+
+  uv_tcp_t *client = (uv_tcp_t *) malloc(sizeof(uv_tcp_t));
+  uv_tcp_init(uv_default_loop(), client);
+  if (uv_accept(server, (uv_stream_t *) client) == 0) {
+    printf("Accept Connection Ok\n");
+
+    uv_read_start((uv_stream_t *) client, libuv_alloc_buffer, libuv_read_cb);
+
+    duk_int_t result;
+    int32_t id = (int32_t) server->data;
+
+    duk_push_global_stash(mainContext);
+    duk_get_prop_string(mainContext, -1, "netHandler");
+    duk_push_number(mainContext, id);
+    duk_get_prop(mainContext, -2);
+    result = duk_pcall(mainContext, 0);
+    duk_pop(mainContext); // Result
+    duk_pop(mainContext); // Net Handler
+    duk_pop(mainContext); // Stash
+  } else {
+    uv_close((uv_handle_t *) client, NULL);
+  }
 }
 
 static duk_ret_t net_createConnection(duk_context *ctx) {
@@ -49,11 +80,6 @@ static duk_ret_t net_serverClose(duk_context *ctx) {
 static duk_ret_t net_serverAddress(duk_context *ctx) {
 //  printf("%s %d\n", __PRETTY_FUNCTION__, __LINE__);
   return 0;
-}
-
-static void libuv_close(uv_handle_t *handle) {
-  printf("UV Close %p \n", handle);
-  close(handle);
 }
 
 static duk_ret_t net_serverFinalizer(duk_context *ctx) {

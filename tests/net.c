@@ -22,7 +22,25 @@ static uv_buf_t libuv_alloc_buffer(uv_handle_t * handle, size_t size) {
   return uv_buf_init((char *) malloc(size), size);
 }
 
+static duk_ret_t net_socketWrite(duk_context *ctx) {
+  return 0;
+}
+
+static duk_ret_t net_socketOn(duk_context *ctx) {
+  return 0;
+}
+
+const duk_function_list_entry net_socket_functions_list[] = {
+  { "write", net_socketWrite, 3  },
+  { "on", net_socketOn, 2  },
+  { NULL, NULL, 0 }
+};
+
 static void net_on_new_connection(uv_stream_t *server, int status) {
+  struct sockaddr_storage peer;
+  struct sockaddr_in *in4;
+  char ipaddr[32];
+  int namelen, r;
   if (status == -1)
     return;
 
@@ -40,7 +58,23 @@ static void net_on_new_connection(uv_stream_t *server, int status) {
     duk_get_prop_string(mainContext, -1, "netHandler");
     duk_push_number(mainContext, id);
     duk_get_prop(mainContext, -2);
-    result = duk_pcall(mainContext, 0);
+
+    namelen = sizeof(struct sockaddr_storage);
+    r = uv_tcp_getpeername((uv_tcp_t *) client, (struct sockaddr *) &peer, &namelen);
+    in4 = (struct sockaddr_in *) &peer;
+    uv_inet_ntop(AF_INET, &in4->sin_addr, ipaddr, 32);
+    printf("Incoming : %d %d %d , %s\n", r, namelen, ntohs(in4->sin_port), ipaddr);
+
+    namelen = sizeof(struct sockaddr_in);
+    r = uv_tcp_getsockname((uv_tcp_t *) client, (struct sockaddr *) &peer, &namelen);
+    in4 = (struct sockaddr_in *) &peer;
+    uv_inet_ntop(AF_INET, &in4->sin_addr, ipaddr, 32);
+    printf("Incoming : %d %d %d , %s\n", r, namelen, htons(in4->sin_port), inet_ntoa(in4->sin_addr));
+
+    duk_push_object(mainContext);
+    duk_put_function_list(mainContext, -1, net_socket_functions_list);
+    result = duk_pcall(mainContext, 1);
+
     duk_pop(mainContext); // Result
     duk_pop(mainContext); // Net Handler
     duk_pop(mainContext); // Stash

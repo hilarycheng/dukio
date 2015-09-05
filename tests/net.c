@@ -3,16 +3,61 @@
 
 static duk_context *mainContext;
 static int32_t net_next_id = 1;
+static int32_t sock_next_id = 1;
 
 static void libuv_close(uv_handle_t *handle) {
-  printf("UV Close %p \n", handle);
+  int32_t id = (int32_t) handle->data;
   free(handle);
+
+  duk_push_global_stash(mainContext);
+  duk_get_prop_string(mainContext, -1, "sockHandler");
+  duk_push_int(mainContext, id);
+  duk_get_prop(mainContext, -2);
+  duk_bool_t is_undefined = duk_is_undefined(mainContext, -1);
+  if (!is_undefined) {
+      duk_push_string(mainContext, "close");
+      duk_get_prop(mainContext, -2);
+      duk_bool_t is_undefined = duk_is_undefined(mainContext, -1);
+      if (!is_undefined) {
+        duk_push_int(mainContext, 1);
+        duk_pcall(mainContext, 1);
+      }
+      duk_pop(mainContext);
+  }
+  duk_pop_n(mainContext, 3);
+  if (!is_undefined) {
+    duk_push_global_stash(mainContext);
+    duk_get_prop_string(mainContext, -1, "sockHandler");
+    duk_push_int(mainContext, id);
+    duk_del_prop(mainContext, -2);
+    duk_pop_n(mainContext, 2);
+  }
 }
 
 static void libuv_read_cb(uv_stream_t * stream, ssize_t nread, uv_buf_t buf) {
-  printf("%s %d - %d\n", __PRETTY_FUNCTION__, __LINE__, nread);
+  int32_t id = (int32_t) stream->data;
+
   if (nread == -1) {
     uv_close((uv_handle_t *) stream, libuv_close);
+  } else {
+    duk_push_global_stash(mainContext);
+    duk_get_prop_string(mainContext, -1, "sockHandler");
+    duk_push_int(mainContext, id);
+    duk_get_prop(mainContext, -2);
+    duk_bool_t is_undefined = duk_is_undefined(mainContext, -1);
+
+    if (!is_undefined) {
+      duk_push_string(mainContext, "data");
+      duk_get_prop(mainContext, -2);
+      duk_bool_t is_undefined = duk_is_undefined(mainContext, -1);
+      if (!is_undefined) {
+        duk_push_int(mainContext, 1);
+        duk_pcall(mainContext, 1);
+      }
+      duk_pop(mainContext);
+    }
+
+    duk_pop_n(mainContext, 3);
   }
 
   free(buf.base);
@@ -23,10 +68,77 @@ static uv_buf_t libuv_alloc_buffer(uv_handle_t * handle, size_t size) {
 }
 
 static duk_ret_t net_socketWrite(duk_context *ctx) {
+  uv_tcp_t *tcp = NULL;
+  int sock_id = 0;
+
+  duk_push_this(ctx);
+  duk_get_prop_string(ctx, -1, "\xff""\xff""handler");
+  tcp = (uv_tcp_t *) duk_to_pointer(ctx, -1);
+  duk_pop(ctx);
+
+  duk_get_prop_string(ctx, -1, "\xff""\xff""uv_tcp");
+  sock_id = duk_to_int(ctx, -1);
+  duk_pop(ctx);
+
+  duk_pop(ctx);
+
+  printf("%s %d - %d\n", __PRETTY_FUNCTION__, __LINE__, sock_id);
+
   return 0;
 }
 
 static duk_ret_t net_socketOn(duk_context *ctx) {
+  uv_tcp_t *tcp = NULL;
+  int sock_id = 0;
+
+  duk_push_this(ctx);
+
+  duk_get_prop_string(ctx, -1, "\xff""\xff""handler");
+  tcp = (uv_tcp_t *) duk_to_pointer(ctx, -1);
+  duk_pop(ctx);
+
+  duk_get_prop_string(ctx, -1, "\xff""\xff""uv_tcp");
+  sock_id = duk_to_int(ctx, -1);
+  duk_pop(ctx);
+
+  duk_pop(ctx);
+
+  const char *buf = duk_require_string(ctx, 0);
+  if (strcmp(buf, "data") != 0 && strcmp(buf, "lookup") != 0 &&
+    strcmp(buf, "connect") != 0 && strcmp(buf, "end") != 0 &&
+    strcmp(buf, "timeout") != 0 && strcmp(buf, "drain") != 0 &&
+    strcmp(buf, "error") != 0 && strcmp(buf, "close") != 0) {
+
+    return 0;
+  }
+
+  if (!duk_is_function(ctx, 1))
+    return 0;
+
+  duk_push_global_stash(ctx); // [ stash ]
+  duk_get_prop_string(ctx, -1, "sockHandler"); // [ stash sockHandler ]
+  duk_push_int(ctx, sock_id); // [ stash sockHandler sock_id ]
+  duk_get_prop(ctx, -2); // [ stash sockHandler obj ]
+
+  duk_bool_t is_undefined = duk_is_undefined(ctx, -1);
+
+  duk_push_global_stash(ctx);
+  duk_get_prop_string(ctx, -1, "sockHandler");
+  duk_push_int(ctx, sock_id); // [ stash sockHandler obj sock_id ]
+
+  if (is_undefined) {
+    duk_push_object(ctx); // [ stash sockHandler obj sock_id obj]
+  } else {
+    duk_dup(ctx, -4); // [ stash sockHandler obj sock_id obj]
+    duk_bool_t is_obj = duk_is_object(ctx, -1);
+  }
+
+  duk_push_string(ctx, buf); // [ stash sockHandler obj sock_id obj action ]
+  duk_dup(ctx, 1); // [ stash sockHandler obj sock_id obj action cb ]
+  duk_put_prop(ctx, -3); // object[action] = callback, [ stash sockHandler obj sock_id obj ]
+  duk_put_prop(ctx, -3); // sockHandler[id] = object, [ stash sockHandler obj ]
+  duk_pop_n(ctx, 5);
+
   return 0;
 }
 
@@ -53,25 +165,44 @@ static void net_on_new_connection(uv_stream_t *server, int status) {
 
     duk_int_t result;
     int32_t id = (int32_t) server->data;
+    int32_t sock_id = (int32_t) sock_next_id++;
+
+    client->data = (void *) sock_id;
 
     duk_push_global_stash(mainContext);
     duk_get_prop_string(mainContext, -1, "netHandler");
     duk_push_number(mainContext, id);
     duk_get_prop(mainContext, -2);
 
+    duk_push_object(mainContext);
+    duk_push_pointer(mainContext, (void *) client);
+    duk_put_prop_string(mainContext, -2, "\xff""\xff""handler");
+
+    duk_push_number(mainContext, sock_id);
+    duk_put_prop_string(mainContext, -2, "\xff""\xff""uv_tcp");
+
     namelen = sizeof(struct sockaddr_storage);
     r = uv_tcp_getpeername((uv_tcp_t *) client, (struct sockaddr *) &peer, &namelen);
     in4 = (struct sockaddr_in *) &peer;
     uv_inet_ntop(AF_INET, &in4->sin_addr, ipaddr, 32);
-    printf("Incoming : %d %d %d , %s\n", r, namelen, ntohs(in4->sin_port), ipaddr);
 
-    namelen = sizeof(struct sockaddr_in);
+    duk_push_int(mainContext, htons(in4->sin_port));
+    duk_put_prop_string(mainContext, -2, "remotePort");
+    duk_push_string(mainContext, ipaddr);
+    duk_put_prop_string(mainContext, -2, "remoteAddress");
+    duk_push_string(mainContext, "IPv4");
+    duk_put_prop_string(mainContext, -2, "remoteFamily");
+
+    namelen = sizeof(struct sockaddr_storage);
     r = uv_tcp_getsockname((uv_tcp_t *) client, (struct sockaddr *) &peer, &namelen);
     in4 = (struct sockaddr_in *) &peer;
     uv_inet_ntop(AF_INET, &in4->sin_addr, ipaddr, 32);
-    printf("Incoming : %d %d %d , %s\n", r, namelen, htons(in4->sin_port), inet_ntoa(in4->sin_addr));
 
-    duk_push_object(mainContext);
+    duk_push_int(mainContext, htons(in4->sin_port));
+    duk_put_prop_string(mainContext, -2, "localPort");
+    duk_push_string(mainContext, ipaddr);
+    duk_put_prop_string(mainContext, -2, "localAddress");
+
     duk_put_function_list(mainContext, -1, net_socket_functions_list);
     result = duk_pcall(mainContext, 1);
 
@@ -79,6 +210,7 @@ static void net_on_new_connection(uv_stream_t *server, int status) {
     duk_pop(mainContext); // Net Handler
     duk_pop(mainContext); // Stash
   } else {
+    free(client);
     uv_close((uv_handle_t *) client, NULL);
   }
 }
@@ -213,6 +345,8 @@ void net_Init(duk_context *ctx) {
   duk_push_global_stash(ctx);
   duk_push_object(ctx);
   duk_put_prop_string(ctx, -2, "netHandler");
+  duk_push_object(ctx);
+  duk_put_prop_string(ctx, -2, "sockHandler");
   duk_pop(ctx);
 }
 

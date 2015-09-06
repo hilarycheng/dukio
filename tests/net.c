@@ -1,6 +1,11 @@
 #include <uv.h>
 #include "duktape.h"
 
+typedef struct {
+  uv_write_t req;
+  uv_buf_t buf;
+} write_req_t;
+
 static duk_context *mainContext;
 static int32_t net_next_id = 1;
 static int32_t sock_next_id = 1;
@@ -51,7 +56,8 @@ static void libuv_read_cb(uv_stream_t * stream, ssize_t nread, uv_buf_t buf) {
       duk_get_prop(mainContext, -2);
       duk_bool_t is_undefined = duk_is_undefined(mainContext, -1);
       if (!is_undefined) {
-        duk_push_int(mainContext, 1);
+        char *p = duk_push_fixed_buffer(mainContext, nread);
+        memcpy(p, buf.base, nread);
         duk_pcall(mainContext, 1);
       }
       duk_pop(mainContext);
@@ -65,6 +71,12 @@ static void libuv_read_cb(uv_stream_t * stream, ssize_t nread, uv_buf_t buf) {
 
 static uv_buf_t libuv_alloc_buffer(uv_handle_t * handle, size_t size) {
   return uv_buf_init((char *) malloc(size), size);
+}
+
+static void libuv_write(uv_write_t *req, int status) {
+  write_req_t *wr = (write_req_t *) req;
+  free(wr->buf.base);
+  free(wr);
 }
 
 static duk_ret_t net_socketWrite(duk_context *ctx) {
@@ -82,7 +94,18 @@ static duk_ret_t net_socketWrite(duk_context *ctx) {
 
   duk_pop(ctx);
 
-  printf("%s %d - %d\n", __PRETTY_FUNCTION__, __LINE__, sock_id);
+  if (duk_is_string(ctx, 0)) {
+    write_req_t *req = (write_req_t *) malloc(sizeof(write_req_t));
+    const char *str = duk_require_string(ctx, 0);
+    int len = strlen(str);
+    int slen = len;
+    len = (len / 1024) * 1024 + ((len % 1024) > 0 ? 1024 : 0);
+    char *buf = malloc(len);
+    memcpy(buf, str, slen);
+
+    req->buf = uv_buf_init(buf, slen);
+    uv_write(&req->req, (uv_stream_t *) tcp, &req->buf, 1, libuv_write);
+  }
 
   return 0;
 }
@@ -122,22 +145,19 @@ static duk_ret_t net_socketOn(duk_context *ctx) {
 
   duk_bool_t is_undefined = duk_is_undefined(ctx, -1);
 
-  duk_push_global_stash(ctx);
-  duk_get_prop_string(ctx, -1, "sockHandler");
   duk_push_int(ctx, sock_id); // [ stash sockHandler obj sock_id ]
 
   if (is_undefined) {
-    duk_push_object(ctx); // [ stash sockHandler obj sock_id obj]
+    duk_push_object(ctx); // [ stash sockHandler obj sock_id obj ]
   } else {
-    duk_dup(ctx, -4); // [ stash sockHandler obj sock_id obj]
-    duk_bool_t is_obj = duk_is_object(ctx, -1);
+    duk_dup(ctx, -2); // [ stash sockHandler obj sock_id obj ]
   }
 
   duk_push_string(ctx, buf); // [ stash sockHandler obj sock_id obj action ]
   duk_dup(ctx, 1); // [ stash sockHandler obj sock_id obj action cb ]
   duk_put_prop(ctx, -3); // object[action] = callback, [ stash sockHandler obj sock_id obj ]
-  duk_put_prop(ctx, -3); // sockHandler[id] = object, [ stash sockHandler obj ]
-  duk_pop_n(ctx, 5);
+  duk_put_prop(ctx, -4); // sockHandler[id] = object, [ stash sockHandler obj ]
+  duk_pop_n(ctx, 3);
 
   return 0;
 }

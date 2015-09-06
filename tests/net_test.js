@@ -8,7 +8,8 @@ var s0 = net.createServer(function(socket) {
   print(socket.localAddress + ' ' + socket.localPort);
 
   socket.on('data', function(data) {
-    print('Sockte Data ' + data);
+    print('Sockte Data ' + data.length);
+    socket.write('ABCDEF');
   });
 
   socket.on('close', function(had_error) {

@@ -110,6 +110,26 @@ static duk_ret_t net_socketWrite(duk_context *ctx) {
   return 0;
 }
 
+static duk_ret_t net_socketClose(duk_context *ctx) {
+  uv_tcp_t *tcp = NULL;
+  int sock_id = 0;
+
+  duk_push_this(ctx);
+  duk_get_prop_string(ctx, -1, "\xff""\xff""handler");
+  tcp = (uv_tcp_t *) duk_to_pointer(ctx, -1);
+  duk_pop(ctx);
+
+  duk_get_prop_string(ctx, -1, "\xff""\xff""uv_tcp");
+  sock_id = duk_to_int(ctx, -1);
+  duk_pop(ctx);
+
+  duk_pop(ctx);
+
+  uv_close((uv_handle_t *) tcp, libuv_close);
+
+  return 0;
+}
+
 static duk_ret_t net_socketOn(duk_context *ctx) {
   uv_tcp_t *tcp = NULL;
   int sock_id = 0;
@@ -165,6 +185,7 @@ static duk_ret_t net_socketOn(duk_context *ctx) {
 const duk_function_list_entry net_socket_functions_list[] = {
   { "write", net_socketWrite, 3  },
   { "on", net_socketOn, 2  },
+  { "close", net_socketClose, 1  },
   { NULL, NULL, 0 }
 };
 
@@ -231,7 +252,7 @@ static void net_on_new_connection(uv_stream_t *server, int status) {
     duk_pop(mainContext); // Stash
   } else {
     free(client);
-    uv_close((uv_handle_t *) client, NULL);
+//    uv_close((uv_handle_t *) client, NULL);
   }
 }
 

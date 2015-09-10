@@ -10,6 +10,7 @@ var s0 = net.createServer(function(socket) {
   socket.on('data', function(data) {
     print('Sockte Data ' + data.length);
     socket.write('ABCDEF');
+    socket.close();
   });
 
   socket.on('close', function(had_error) {

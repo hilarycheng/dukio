@@ -1,11 +1,11 @@
 /*
- *  Duktape public API for Duktape 1.2.3.
+ *  Duktape public API for Duktape 1.2.4.
  *  See the API reference for documentation on call semantics.
  *  The exposed API is inside the DUK_API_PUBLIC_H_INCLUDED
  *  include guard.  Other parts of the header are Duktape
  *  internal and related to platform/compiler/feature detection.
  *
- *  Git commit 0605a18660dbae486c62a42a33fabd034c8623ff (v1.2.3).
+ *  Git commit 7fb2905d3980551ee146012260ce87b309853735 (v1.2.4).
  *
  *  See Duktape AUTHORS.rst and LICENSE.txt for copyright and
  *  licensing information.
@@ -588,7 +588,9 @@ static __inline__ unsigned long long duk_rdtsc(void) {
  * there is no platform specific date parsing/formatting but there is still
  * the ISO 8601 standard format.
  */
+#if defined(DUK_COMPILING_DUKTAPE)
 #include <windows.h>
+#endif
 #include <limits.h>
 #elif defined(DUK_F_FLASHPLAYER)
 /* Crossbridge */
@@ -3175,13 +3177,13 @@ struct duk_number_list_entry {
  * have 99 for patch level (e.g. 0.10.99 would be a development version
  * after 0.10.0 but before the next official release).
  */
-#define DUK_VERSION                       10203L
+#define DUK_VERSION                       10204L
 
 /* Git describe for Duktape build.  Useful for non-official snapshot builds
  * so that application code can easily log which Duktape snapshot was used.
  * Not available in the Ecmascript environment.
  */
-#define DUK_GIT_DESCRIBE                  "v1.2.3"
+#define DUK_GIT_DESCRIBE                  "v1.2.4"
 
 /* Duktape debug protocol version used by this build. */
 #define DUK_DEBUG_PROTOCOL_VERSION        1
